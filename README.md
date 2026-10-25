@@ -585,17 +585,6 @@ or hardware operation.
 | `tb_motor_protection_top.v` | Self-checking behavioral simulation scenarios |
 | `Project_simulation_1.xpr` | Vivado project configuration |
 
-##Expected results in tcl console:
-INFO: [Wavedata 42-604] Simulation restarted
-run all
-Test 1: startup, successful BIST, and safe motor operation
-Test 2: rising current triggers an overcurrent fault
-Test 3: cleared overcurrent completes cooldown and recovery ramp
-Test 4: repeated trips are limited to three recovery attempts
-Test 5: invalid sensor causes fault, shutdown, and lockout
-Test 6: failed startup BIST enters lockout
-PASS: all motor protection testbench scenarios completed
-$finish called at time : 5910 ns : File "C:/Users/Admin/Downloads/predictive-motor-protection/predictive-motor-protection-main/tb_motor_protection_top.v" Line 245
 
 ## Important engineering gaps before hardware use
 
