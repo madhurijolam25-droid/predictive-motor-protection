@@ -235,8 +235,7 @@ module motor_protection_top (
         .risk_level(risk_level),
         .motor_enable(motor_enable),
         .recovery_active(recovery_active),
-        .pwm_duty(pwm_duty),
-        .recovery_complete(recovery_complete)
+        .pwm_duty(pwm_duty)
     );
 
     // -----------------------------------------

@@ -2,8 +2,8 @@
 
 ## What this project is
 
-This project is a simulation of a motor monitoring and protection
-controller. It reads digitized current, voltage, and temperature values, looks
+This project implements a digital motor monitoring and protection controller
+on an FPGA. It reads digitized current, voltage, and temperature values, looks
 for risky conditions, and adjusts or disables a PWM output. It also records a
 fault code and basic fault statistics.
 
@@ -16,38 +16,49 @@ The main idea is to respond to a problem before it becomes worse:
 5. Log faults and, for eligible faults, require a stable clear period before a
    limited number of cooldown-and-recovery attempts.
 
-This is a digital RTL model, not a complete motor-drive product. The sensor
-inputs are already digital values; there is no ADC conversion interface, motor
-power stage, physical-unit conversion, board pin mapping, or safety
+This is an FPGA implementation of digital RTL, not a complete motor-drive
+product. The sensor inputs are already digital values; there is no ADC
+conversion interface, motor power stage, physical-unit conversion, or safety
 certification in this project.
 
-The checked-in Vivado project identifies Vivado 2023.2 and target part
-`xc7a100tcsg324-1`. A device part is not a board definition: correct pin
-assignments, clock definition, and electrical I/O standards still need to be
-supplied for the specific board.
+The FPGA implementation has been brought up on a Digilent Nexys 4 DDR board,
+as reported by the project team and shown in the shared board photo. The
+checked-in Vivado project identifies Vivado 2023.2 and target part
+`xc7a100tcsg324-1`, but does not include an XDC constraints file. The pin
+assignments, clock definition, and electrical I/O standards used for the board
+bring-up are therefore not captured in this repository.
 
 ## Comparison with the supplied paper
 
-The supplied reference is Zhang et al., “Three-Phase Motor Driver with
-Overcurrent Protection Function,” IEEE ISCAS 2024,
-[doi:10.1109/ISCAS58744.2024.10558184](https://doi.org/10.1109/ISCAS58744.2024.10558184).
-This is a comparison of the paper's reported design with the RTL in this
-folder, not a reproduction of the paper.
+The supplied reference is A. Aib, D. E. Khodja, S. Chakroune, and H. Rahali,
+“Fuzzy current analysis-based fault diagnostic of induction motor using
+hardware co-simulation with field programmable gate array,”
+*Electrical Engineering & Electromechanics*, 2023, no. 6, pp. 3–9,
+[doi:10.20998/2074-272X.2023.6.01](https://doi.org/10.20998/2074-272X.2023.6.01).
+The paper studies fuzzy-logic diagnosis of phase unbalance and a missing phase
+using stator-current RMS as the fault indicator, validated with hardware
+co-simulation on a Xilinx ML402 board with a Virtex-4 FPGA and MATLAB/Simulink
+System Generator.
 
 | Topic | Supplied paper | This project |
 |---|---|---|
-| Main goal | Design and simulate an integrated three-phase BLDC motor-driver chip | Prototype a digital FPGA-based motor monitoring and protection controller |
-| Overcurrent sensing | Per-bridge current sensing using an on-chip current-mirror approach and detection logic | Compares a filtered digital current value against programmable RTL thresholds |
-| Switching transients | Includes a short blanking interval in the overcurrent path to reduce false trips from switching spikes | Uses a four-sample moving average; it does not synchronize a blanking [...] |
-| Drive functions | Integrates three-phase bridge/gate-drive support, charge-pump circuitry, Hall-signal decoding, PWM current control, and protection blocks | Generates one generic PWM output and a r[...] |
-| Response after overcurrent | Describes turning off the driver when overcurrent is detected; the paper does not describe an automatic restart/recovery sequence | Main enhancement: after cooldown, the[...] |
-| Evidence | Reports circuit-level simulations and chip-design metrics for the proposed driver | Has RTL behavioral simulation; no board-level or physical-motor validation is established here |
-| Units | Paper reports physical electrical values for its design | RTL thresholds are ADC counts with no current/voltage/temperature calibration |
+| Main goal | Diagnose induction-motor phase-unbalance and missing-phase faults | Provide digital motor-risk supervision, PWM-command control, and fault handling |
+| Current analysis | Uses stator-current RMS as the input fault indicator for fuzzy logic | Averages four samples of one digital current channel, predicts a short-term trend, and applies count thresholds; it does not calculate RMS |
+| Diagnostic method | Fuzzy-logic fault-detection architecture | Fixed threshold/risk logic and sensor diagnostics; no fuzzy inference |
+| Fault coverage | Phase unbalance and missing phase | Generic overcurrent, voltage/thermal, stall, persistence, and sensor faults; no per-phase imbalance or missing-phase diagnosis |
+| FPGA implementation | ML402 board with Xilinx Virtex-4, co-simulated through MATLAB/Simulink System Generator | RTL project targeting `xc7a100tcsg324-1`; Nexys 4 DDR board bring-up is reported, but board constraints and motor-connected validation are not documented here |
+| Drive behavior | The paper focuses on fault diagnosis, not the recovery controller implemented here | One generic PWM command with risk-based duty and cooldown/recovery/lockout |
 
-> ** What this project adds beyond the paper's reported protection features **
+**Conclusion:** the project does not reproduce or currently match the paper's
+diagnostic method or fault coverage. The overlap is at a broad level: both use
+FPGA technology and motor-current information for motor-condition monitoring.
+The project is a distinct supervisory protection design, not an implementation
+of the paper's fuzzy RMS-based phase-fault diagnosis.
+
+> **Project behavior distinct from the paper**
 >
-> The project's **main enhancement is controlled recovery after a cleared
-> fault**:
+> The project's main enhancement is controlled recovery after a cleared
+> fault:
 >
 > 1. Detect overcurrent and force the PWM command low.
 > 2. Keep the motor disabled during cooldown.
@@ -60,56 +71,31 @@ folder, not a reproduction of the paper.
 > 6. Return to normal control after the ramp; if risk becomes critical or a
 >    fault returns, shut down again.
 >
-> Supporting features include predictive current risk, sensor diagnostics,
-> voltage/temperature checks, stall/persistence detection, and fault logging.
+> Other implemented features include predictive current risk, sensor
+> diagnostics, voltage/temperature checks, stall/persistence detection, and
+> fault logging.
 >
-> **Important:** these are additional digital supervision features, not proof
-> of better protection performance. The paper is a three-phase driver-chip
-> design with hardware current-sensing and gate-drive circuits; this project
-> is a single-PWM RTL prototype and does not implement those circuits. The
-> testbench now exercises overcurrent detection, fault clearance, cooldown,
-> and recovery through the top-level design; run it in Vivado to verify the
-> complete sequence.
->
->
+> These are different goals and features, not evidence that the paper's
+> diagnostic method has been implemented. The testbench exercises selected
+> RTL behaviors, including overcurrent detection, fault clearance, cooldown,
+> and recovery; it does not validate the paper's fuzzy diagnosis or physical
+> motor behavior.
 
-The paper and this project address related safety goals at different layers.
-The paper describes a motor-driver IC and its current-sensing/gate-drive
-circuits. This RTL is a higher-level digital supervisor. It should not be
-described as a replacement for the paper's fast hardware overcurrent path or
-as a verified three-phase driver.
+### Work needed to match the paper's method
 
-### Practical enhancements inspired by the comparison
+The following are proposed additions, not implemented features:
 
-These are proposed extensions, not features already implemented:
-
-1. **Keep a fast emergency trip.** Add a direct, low-latency overcurrent path
-   that disables the drive without waiting for the four-sample filter,
-   prediction, or software-style state sequencing. Keep the independent
-   hardware current limit as the final safety layer.
-2. **Handle switching noise deliberately.** If the current sensor produces
-   switching spikes, consider a short, clock-calibrated blanking/deglitch
-   window synchronized to PWM edges. Verify that it cannot mask a sustained
-   overcurrent; do not copy a timing value without matching the board,
-   switching frequency, sensor, and device.
-3. **Extend from one current channel to three phases.** Add per-phase samples
-   and checks for phase imbalance, missing phase current, and phase-specific
-   overcurrent before claiming three-phase monitoring.
-4. **Define an actual drive interface.** Specify how the controller safely
-   disables all gate commands and how it interfaces with a real gate driver.
-   The current single PWM output is not a three-phase bridge controller.
-5. **Calibrate every threshold.** Document the ADC scale and derive current,
-   voltage, and temperature limits from the chosen sensors and motor. The
-   paper's physical values are not interchangeable with this RTL's count
-   values.
-6. **Complete the protection verification.** Test fast-trip latency,
-   PWM-edge transients, all thresholds, phase faults, reset/lockout behavior,
-   fault clearance, cooldown, and the recovery ramp. Then validate on a
-   current-limited bench with independent hardware protection.
-
-The most distinctive direction for this project is to combine a fast
-independent overcurrent shutdown with the slower predictive supervision,
-diagnostics, and explainable fault logging already present in the RTL.
+1. Acquire and process separate stator-current measurements for the motor
+   phases, then calculate the RMS indicator used by the paper.
+2. Implement and verify the paper's fuzzy-logic inference for phase unbalance
+   and missing-phase faults; the existing thresholds do not provide this
+   diagnosis.
+3. Define and document the sensor interface, FPGA pin/clock constraints, and
+   the hardware co-simulation setup needed to validate the algorithm against
+   reference MATLAB/Simulink results.
+4. Test with suitable phase-current signals and a motor/drive setup. A generic
+   PWM output and the reported board bring-up alone do not establish phase
+   fault diagnosis or physical-motor validation.
 
 ## Design at a glance
 
@@ -176,7 +162,7 @@ not a physical power disconnect.
 All thresholds below are **digital input counts**, unless stated otherwise.
 The RTL does not define what one count means in amperes, volts, or degrees.
 Those conversions and the real motor's safe limits must be established for the
-actual sensors and motor before hardware use.
+actual sensors and motor before motor-connected use.
 
 ## Conditions and thresholds in the RTL
 
@@ -535,8 +521,7 @@ simultaneous-fault priority.
 The user-reported Vivado behavioral simulation completed all six scenarios
 and printed `PASS: all motor protection testbench scenarios completed`,
 including the clear-qualification and recovery-attempt-limit tests. This is
-RTL simulation evidence only, not hardware validation or evidence for the
-untested behaviors above.
+RTL simulation evidence, not evidence for the untested behaviors above.
 
 The user-reported Vivado RTL synthesis completed with **0 errors** and **0
 critical warnings**. The subsequent implementation report says placement and
@@ -557,8 +542,10 @@ That earlier synthesis reported 16 warnings. Some report unused temporary regist
 `delta_i` input on `risk_classifier` is redundant because the classifier uses
 `predicted_current`. The earlier synthesis report also identified the
 thermal-state update gap, which has since been fixed and simulation-tested.
-Successful synthesis, placement, and routing do not establish timing closure
-or hardware operation.
+Synthesis, placement, and routing completed for the FPGA target, but the
+unconstrained timing report does not establish timing closure. The reported
+board bring-up does not establish protection behavior with real sensor inputs
+or operation with a physical motor.
 
 ## File guide
 
@@ -586,17 +573,15 @@ or hardware operation.
 | `Project_simulation_1.xpr` | Vivado project configuration |
 
 
-## Important engineering gaps before hardware use
+## Important engineering gaps before motor-connected validation
 
 1. Convert ADC counts to physical units and set thresholds from the actual
    motor, sensors, and operating conditions.
-2. Fix and test the thermal-state temperature integration gap described above.
-3. Add a full top-level test that clears a measured overcurrent and verifies
-   the sensor-to-FSM cooldown/recovery path.
-4. Add tests for all thresholds, fault-code priority, PWM timing, and boundary
-   cases, including simultaneous faults.
-5. Add and verify the correct FPGA pin constraints, clock constraints, and
-   board-specific I/O settings for the target hardware.
-6. Validate protection behavior on a safe bench setup before connecting a
-   motor. This prototype is not a substitute for independent hardware
-   overcurrent protection or a certified safety system.
+2. Extend tests to cover voltage limits, thermal thresholds, persistence and
+   stall timing, PWM waveform timing, fault-code priority, and boundary cases,
+   including simultaneous faults.
+3. Add the Nexys 4 DDR pin, clock, and I/O constraints used for the board
+   bring-up to the project, and verify them against the board setup.
+4. Validate protection behavior with real sensor inputs on a safe bench setup
+   before connecting a motor. This prototype is not a substitute for
+   independent hardware overcurrent protection or a certified safety system.
