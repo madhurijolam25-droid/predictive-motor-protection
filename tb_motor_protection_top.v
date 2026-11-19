@@ -211,6 +211,27 @@ module tb_motor_protection_top;
             end
         end
     endtask
+    
+        // Brief trip for recovery tests: exercise the fast-trip path without
+    // holding elevated risk long enough to trigger persistent-fault lockout.
+    task trigger_recoverable_overcurrent;
+        begin
+            @(negedge clk);
+            current_raw = 12'd4000;
+            wait_for_fast_trip(8);
+            #1;
+
+            if (fault !== 1'b1 || fault_code !== 4'd2) begin
+                $fatal(
+                    1,
+                    "Expected brief fast-trip fault: fault=%b code=%0d",
+                    fault, fault_code
+                );
+            end
+
+            current_raw = 12'd100;
+        end
+    endtask
 
     // Confirm recovery is gradual and ends at the SAFE duty target.
     task recover_to_normal;
@@ -300,18 +321,33 @@ module tb_motor_protection_top;
             );
         end
 
+    // Test 3: a large jump is held for one sample, then accepted if it
+        // persists; sustained elevated current eventually trips inverse-time.
         // Test 3: deglitching holds a large input jump briefly, then the
         // inverse-time overload path trips on sustained elevated current.
         $display("Test 3: deglitching and inverse-time overload protection");
+        current_raw = 12'd100;
+        sensor_valid_raw = 1'b1;
         apply_reset();
         wait_for_state(ST_NORMAL, 20);
+
+        @(negedge clk);
         current_raw = 12'd2000;
         repeat (2) @(negedge clk);
 
         if (dut.current_deglitched !== 12'd100) begin
             $fatal(
                 1,
-                "Expected deglitcher to reject the initial jump for one sample, got %0d",
+                "Expected deglitcher to hold the previous sample for one cycle, got %0d",
+                dut.current_deglitched
+            );
+        end
+
+        @(negedge clk);
+        if (dut.current_deglitched !== 12'd2000) begin
+            $fatal(
+                1,
+                "Expected persistent current jump to be accepted, got %0d",
                 dut.current_deglitched
             );
         end
@@ -325,9 +361,10 @@ module tb_motor_protection_top;
                 dut.inverse_time_fault, fault, fault_code
             );
         end
-
         // Test 4: emergency trip, persistent-fault lockout, and fault logging.
         $display("Test 4: rising current triggers an overcurrent fault");
+        current_raw = 12'd100;
+        sensor_valid_raw = 1'b1;
         apply_reset();
         wait_for_state(ST_NORMAL, 20);
         trigger_overcurrent();
@@ -369,38 +406,43 @@ module tb_motor_protection_top;
             $fatal(1, "Expected fault logger code 2, got %0d", last_fault_code);
         end
 
-        // Test 5: a cleared fault qualifies before PWM recovery begins.
-        $display("Test 5: cleared overcurrent completes cooldown and recovery ramp");
+ $display("Test 5: cleared overcurrent completes cooldown and recovery ramp");
         current_raw = 12'd100;
         sensor_valid_raw = 1'b1;
         apply_reset();
         wait_for_state(ST_NORMAL, 20);
 
-        trigger_overcurrent();
-        current_raw = 12'd100;
-        wait_for_state(ST_SELF_CHECK, 50);
+        trigger_recoverable_overcurrent();
+        wait_for_state(ST_SELF_CHECK, 80);
 
         if (fault !== 1'b0) begin
-            $fatal(1, "Self-check began while fault remained active");
+            $fatal(
+                1,
+                "Self-check began while fault remained active: fault=%b code=%0d",
+                fault, fault_code
+            );
         end
 
         repeat (7) @(negedge clk);
 
         if (fsm_state !== ST_SELF_CHECK) begin
-            $fatal(1, "Recovery started before the 8-cycle clear qualification completed");
+            $fatal(1, "Recovery started before the clear qualification completed");
         end
 
         recover_to_normal();
 
-        // Test 6: enforce the configured three-attempt recovery limit.
+
+
+ // Test 6: enforce the configured three-attempt recovery limit.
         $display("Test 6: repeated trips are limited to three recovery attempts");
         repeat (2) begin
-            trigger_overcurrent();
+            trigger_recoverable_overcurrent();
             recover_to_normal();
         end
 
-        trigger_overcurrent();
-        current_raw = 12'd100;
+        // This is the fourth recovery request overall (one in Test 5 and
+        // two above); the configured three-attempt limit must lock out.
+        trigger_recoverable_overcurrent();
         wait_for_state(ST_LOCKOUT, 80);
 
         if (pwm_out !== 1'b0 || pwm_duty !== 10'd0) begin
@@ -450,6 +492,12 @@ module tb_motor_protection_top;
     initial begin
         #10000;
         $fatal(1, "Global testbench timeout at %0t ns", $time);
+    end
+    
+// Add this initial block inside tb_motor_protection_top
+    initial begin
+        $dumpfile("motor_sim.vcd");
+        $dumpvars(0, tb_motor_protection_top);
     end
 
 endmodule
